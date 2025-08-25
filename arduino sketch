@@ -1,0 +1,116 @@
+#include <WiFi.h>
+#include <WebServer.h>
+
+// WiFi credentials
+const char* ssid = "pulsenet";       // your hotspot name
+const char* password = "Shankar123"; // your hotspot password
+
+WebServer server(80);
+
+// Pins
+const int touchPin = 4;   // touch sensor pin
+const int buzzerPin = 5;  // buzzer pin
+
+// State
+bool alertActive = false;
+
+String htmlPage() {
+  String page = "<!DOCTYPE html><html><head><title>PulseNet Dashboard</title>";
+  page += "<style>body{margin:0;font-family:Arial;background:black;color:white;text-align:center;}";
+  page += "table{margin:auto;border-collapse:collapse;width:70%;}";
+  page += "th,td{padding:12px;border:1px solid #444;text-align:center;}";
+  page += "th{background:#222;}tr:nth-child(even){background:#333;}";
+  page += "button{padding:10px 20px;margin:10px;border:none;border-radius:8px;cursor:pointer;}";
+  page += ".clear{background:red;color:white;}.routes{background:blue;color:white;}";
+  page += "video.bg{position:fixed;right:0;bottom:0;min-width:100%;min-height:100%;z-index:-1;filter:brightness(0.3);} </style></head><body>";
+
+  // background video
+  page += "<video autoplay loop muted class='bg'><source src='https://www.videvo.net/videvo_files/converted/2015_08/videos/TechnologyBackground.mp415804.mp4' type='video/mp4'></video>";
+
+  page += "<h1>PulseNet Dashboard</h1>";
+
+  if (alertActive) {
+    page += "<table><tr><th>S.No</th><th>Band ID</th><th>Nearest Node</th><th>Status</th></tr>";
+    page += "<tr><td>1</td><td>BAND-001</td><td>Node A</td><td style='color:red;'>Requesting Help</td></tr></table>";
+  } else {
+    page += "<p>No active alerts</p>";
+  }
+
+  page += "<form action='/clear'><button class='clear'>Clear Requests</button></form>";
+  page += "<form action='/routes'><button class='routes'>Go to Routes</button></form>";
+  page += "</body></html>";
+  return page;
+}
+
+String routesPage() {
+  String page = "<!DOCTYPE html><html><head><title>Routes</title>";
+  page += "<style>body{background:black;color:white;text-align:center;font-family:Arial;}";
+  page += "svg{margin-top:20px;}circle{stroke:white;stroke-width:2;}text{fill:white;font-size:14px;}line{stroke:blue;stroke-width:2;marker-end:url(#arrow);} </style></head><body>";
+  page += "<h1>Routes Visualization</h1>";
+  page += "<svg width='600' height='400'>";
+  page += "<defs><marker id='arrow' markerWidth='10' markerHeight='10' refX='6' refY='3' orient='auto' markerUnits='strokeWidth'><path d='M0,0 L0,6 L9,3 z' fill='blue' /></marker></defs>";
+  // Yellow = you, Red = help request, Gray = other nodes
+  page += "<circle cx='100' cy='200' r='20' fill='yellow'></circle><text x='90' y='200'>You</text>";
+  page += "<circle cx='500' cy='200' r='20' fill='red'></circle><text x='490' y='200'>Help</text>";
+  page += "<circle cx='300' cy='100' r='20' fill='gray'></circle><text x='290' y='100'>Node B</text>";
+  page += "<circle cx='300' cy='300' r='20' fill='gray'></circle><text x='290' y='300'>Node C</text>";
+  // connections
+  page += "<line x1='100' y1='200' x2='300' y2='100'></line>";
+  page += "<line x1='100' y1='200' x2='300' y2='300'></line>";
+  page += "<line x1='300' y1='100' x2='500' y2='200'></line>";
+  page += "<line x1='300' y1='300' x2='500' y2='200'></line>";
+  // highlight shortest path
+  page += "<line x1='100' y1='200' x2='300' y2='100' stroke='green' stroke-width='3'></line>";
+  page += "<line x1='300' y1='100' x2='500' y2='200' stroke='green' stroke-width='3'></line>";
+  page += "</svg>";
+  page += "<form action='/'><button style='margin-top:20px;padding:10px 20px;'>Back to Dashboard</button></form>";
+  page += "</body></html>";
+  return page;
+}
+
+void handleRoot() {
+  server.send(200, "text/html", htmlPage());
+}
+
+void handleClear() {
+  alertActive = false;
+  digitalWrite(buzzerPin, LOW);
+  server.sendHeader("Location", "/");
+  server.send(303);
+}
+
+void handleRoutes() {
+  server.send(200, "text/html", routesPage());
+}
+
+void setup() {
+  pinMode(touchPin, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+
+  Serial.begin(115200);
+  WiFi.begin(ssid, password);
+  Serial.print("Connecting to WiFi");
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\nWiFi connected! IP: ");
+  Serial.println(WiFi.localIP());
+
+  server.on("/", handleRoot);
+  server.on("/clear", handleClear);
+  server.on("/routes", handleRoutes);
+  server.begin();
+}
+
+void loop() {
+  server.handleClient();
+
+  int touchVal = digitalRead(touchPin);
+  if (touchVal == HIGH && !alertActive) {
+    alertActive = true;
+    digitalWrite(buzzerPin, HIGH);
+    delay(200);  // short beep
+    digitalWrite(buzzerPin, LOW);
+  }
+}
